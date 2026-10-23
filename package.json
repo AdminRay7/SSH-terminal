@@ -1,7 +1,7 @@
 {
-  "name": "my-vps-terminal",
+  "name": "universal-web-ssh",
   "version": "1.0.0",
-  "description": "Private Web SSH Terminal",
+  "description": "Universal Web Terminal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,7 +10,6 @@
     "node": "18.x"
   },
   "dependencies": {
-    "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "ssh2": "^1.15.0",
     "ws": "^8.16.0"
