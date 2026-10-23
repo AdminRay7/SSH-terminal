@@ -2,59 +2,119 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>VPS Web Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Universal VPS Terminal</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <style>
-        body { margin: 0; padding: 0; background-color: #000; }
-        #terminal { width: 100vw; height: 100vh; }
+        body { margin: 0; padding: 0; background-color: #000; font-family: monospace; }
+        #terminal-container { width: 100vw; height: 100vh; display: none; }
+        
+        /* Login Screen Styles */
+        #login-screen {
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            height: 100vh; background: #111; color: #00FF00;
+        }
+        .input-group { margin-bottom: 15px; width: 80%; max-width: 400px; }
+        input {
+            width: 100%; padding: 12px; background: #000; color: #00FF00; border: 1px solid #00FF00; 
+            font-family: monospace; font-size: 16px; box-sizing: border-box; border-radius: 5px;
+        }
+        button {
+            padding: 12px 30px; background: #00FF00; color: #000; border: none; font-weight: bold; 
+            font-size: 18px; border-radius: 5px; cursor: pointer; margin-top: 10px; width: 80%; max-width: 400px;
+        }
+        .title { font-size: 24px; margin-bottom: 30px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="terminal"></div>
+
+    <!-- Login Screen -->
+    <div id="login-screen">
+        <div class="title">VPS Web Terminal</div>
+        <div class="input-group"><input type="text" id="ip" placeholder="VPS IP (e.g. 13.62.223.64)" /></div>
+        <div class="input-group"><input type="text" id="user" placeholder="Username (e.g. ubuntu)" value="ubuntu" /></div>
+        <div class="input-group"><input type="password" id="pass" placeholder="Password" /></div>
+        <button onclick="connectSSH()">CONNECT</button>
+    </div>
+
+    <!-- Terminal Screen -->
+    <div id="terminal-container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script>
-        // Set up the terminal
-        const term = new Terminal({
-            cursorBlink: true,
-            theme: {
-                background: '#000000',
-                foreground: '#00FF00'
+        let term;
+        let ws;
+
+        function connectSSH() {
+            const ip = document.getElementById('ip').value;
+            const user = document.getElementById('user').value;
+            const pass = document.getElementById('pass').value;
+
+            if (!ip || !user || !pass) {
+                alert("Please fill all fields");
+                return;
             }
-        });
-        
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-        term.open(document.getElementById('terminal'));
-        fitAddon.fit();
 
-        // Connect to the WebSocket on the same server
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}`);
+            // Hide login, show terminal
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('terminal-container').style.display = 'block';
 
-        ws.onopen = () => {
-            term.write('Connected to server...\r\n');
-        };
-
-        // Send terminal input to the server
-        term.onData(data => {
-            ws.send(data);
-        });
-
-        // Display server output in the terminal
-        ws.onmessage = (event) => {
-            term.write(event.data);
-        };
-
-        ws.onclose = () => {
-            term.write('\r\n*** Connection Closed ***\r\n');
-        };
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
+            // Initialize Terminal (Bigger Text)
+            term = new Terminal({
+                cursorBlink: true,
+                fontSize: 18,         // INCREASED SIZE
+                fontFamily: 'monospace',
+                fontWeight: 'bold',   // BOLD TEXT
+                theme: { background: '#000000', foreground: '#00FF00' }
+            });
+            
+            const fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            term.open(document.getElementById('terminal-container'));
             fitAddon.fit();
-        });
+
+            // Connect WebSocket
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+            ws.onopen = () => {
+                // Send credentials to backend
+                ws.send(JSON.stringify({ host: ip, username: user, password: pass }));
+            };
+
+            // SMART BACKSPACE LOGIC
+            term.onData(data => {
+                if (data === '\x7f') { // Backspace key
+                    const buffer = term.buffer.active;
+                    const line = buffer.getLine(buffer.cursorY);
+                    const x = buffer.cursorX;
+
+                    if (line) {
+                        // Get the text before the cursor
+                        const textBefore = line.translateToString(true).substring(0, x);
+                        
+                        // If the last character is $ or #, block backspace
+                        if (textBefore.endsWith('$ ') || textBefore.endsWith('# ') || textBefore === '$' || textBefore === '#') {
+                            return; // Ignore backspace
+                        }
+                    }
+                }
+                ws.send(data);
+            });
+
+            ws.onmessage = (event) => {
+                term.write(event.data);
+            };
+
+            ws.onclose = () => {
+                term.write('\r\n*** Disconnected ***\r\n');
+            };
+
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+        }
     </script>
 </body>
 </html>
