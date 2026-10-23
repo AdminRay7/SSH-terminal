@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve the frontend
+// Serve the frontend files from the 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -20,19 +20,25 @@ wss.on('connection', (ws) => {
     let isConnected = false;
 
     ws.on('message', (msg) => {
-        // 1. If not connected, expect login credentials
+        // 1. If not connected, expect login credentials (IP, User, Key)
         if (!isConnected) {
             try {
                 const creds = JSON.parse(msg);
                 
+                // Fix for Windows/Android clipboard formatting issues with keys
+                // Replace any carriage returns with newlines and trim extra spaces
+                let formattedKey = creds.key.replace(/\r\n/g, '\n').trim();
+
                 conn.on('ready', () => {
                     isConnected = true;
                     ws.send('\r\n*** SSH CONNECTION ESTABLISHED ***\r\n');
 
+                    // Open interactive shell
                     conn.shell({ term: 'xterm-256color', rows: 30, cols: 100 }, (err, s) => {
                         if (err) return ws.send('Shell error: ' + err.message);
                         stream = s;
 
+                        // Send server output to browser
                         stream.on('data', (data) => {
                             ws.send(data.toString('binary'));
                         }).on('close', () => {
@@ -42,18 +48,19 @@ wss.on('connection', (ws) => {
                     });
                 }).on('error', (err) => {
                     ws.send('\r\n*** SSH ERROR: ' + err.message + ' ***\r\n');
+                    ws.send('\r\nCheck that your IP and .pem key are correct.\r\n');
                 });
 
-                // Connect using credentials from the browser
+                // Connect using the key
                 conn.connect({
                     host: creds.host,
                     port: 22,
                     username: creds.username,
-                    password: creds.password
+                    privateKey: formattedKey // Pass the cleaned-up key
                 });
 
             } catch (e) {
-                ws.send('Invalid login format.');
+                ws.send('Invalid login format: ' + e.message + '\r\n');
             }
             return;
         }
